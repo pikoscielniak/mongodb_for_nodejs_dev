@@ -1,10 +1,6 @@
 import {MongoClient} from 'mongodb';
 import _ from 'lodash';
 
-function displayStudents(students) {
-    console.dir(students);
-}
-
 function getStudentsColl(db) {
     return db.collection('students');
 }
@@ -39,18 +35,12 @@ function connectedToDb() {
     });
 }
 
-function dbErrorCallback(err) {
-    console.log(err);
-}
-function dbConnectedCallback(db) {
-    fetchAllStudents(db).then(displayStudents);
+function isHomework(score) {
+    return score.type === 'homework';
 }
 
-async function doUpdateScores(db, students) {
-    function isHomework(score) {
-        return score.type === 'homework';
-    }
-
+async function doUpdateScoresParallel(db, students) {
+    console.time("parallel");
     var scoreUpdates = [];
 
     students.forEach(student => {
@@ -65,12 +55,28 @@ async function doUpdateScores(db, students) {
 
     //await Promise.all(scoreUpdates);
     console.log('updated done');
+    console.timeEnd("parallel");
+}
+
+async function doUpdateScoresSeries(db, students) {
+    console.time("series");
+    await students.forEach(async (student) => {
+        var allScores = student.scores;
+        var minHomework = _.chain(allScores).filter(isHomework).min(s=>s.score);
+        if (minHomework) {
+            _.remove(allScores, s => _.isEqual(s, minHomework));
+            await updateScores(db, student._id, allScores);
+        }
+    });
+    console.log('updated done');
+    console.timeEnd("series");
 }
 
 async function startApp() {
     var db = await connectedToDb();
     var students = await fetchAllStudents(db);
-    await doUpdateScores(db, students);
+    await doUpdateScoresParallel(db, students);
+    //await doUpdateScoresSeries(db, students);
 }
 
 startApp();
